@@ -1,0 +1,10 @@
+#Idea
+.idea/
+
+#Build output
+target/
+
+#Generated
+submission/
+
+

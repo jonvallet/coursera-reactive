@@ -1,4 +1,4 @@
-submitProjectName := "kvstore"
+submitProjectName := "quickcheck"
 
 scalaVersion := "2.11.5"
 

@@ -6,4 +6,4 @@ Map[String, String]()
 
 val n = Signal(5)
 
-n()
+scala.math.pow(2,2)

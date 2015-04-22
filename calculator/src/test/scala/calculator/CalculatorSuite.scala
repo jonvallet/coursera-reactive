@@ -64,7 +64,17 @@ class CalculatorSuite extends FunSuite with ShouldMatchers {
 
     val signal: Signal[Double] = result.get("a").get
     assert(signal() == 5.0)
+  }
 
+  test("Polynomial.computeDelta(Signal(1.0), Signal(1.0), Signal(1.0)) should return -3.0") {
+    val actualResult = Polynomial.computeDelta(Signal(3.0), Signal(-2.0), Signal(-1.0))
+    assert(actualResult() == 16.0)
+  }
+
+  test("Polynomial.computeSolutions") {
+    val actualResult = Polynomial.computeSolutions(Signal(3.0), Signal(-2.0), Signal(-1.0), Signal(16.0))
+
+    assert(actualResult() == Set(1.0, -1.0/3))
   }
 
 }

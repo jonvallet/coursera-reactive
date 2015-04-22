@@ -59,4 +59,12 @@ class CalculatorSuite extends FunSuite with ShouldMatchers {
     Calculator.eval(Plus(Literal(1.0), Ref("a")), Map("a"->Signal(Plus(Literal(2.0),Literal(3.0))))) should be (6.0)
   }
 
+  test("Calculator.computeValues(Map(\"a\"->Signal(Plus(Literal(2.0),Literal(3.0))))) should return Map(\"a\"->5.0") {
+    val result = Calculator.computeValues(Map("a"->Signal(Plus(Literal(2.0),Literal(3.0)))))
+
+    val signal: Signal[Double] = result.get("a").get
+    assert(signal() == 5.0)
+
+  }
+
 }

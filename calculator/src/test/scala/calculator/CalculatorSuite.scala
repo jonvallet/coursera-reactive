@@ -55,20 +55,8 @@ class CalculatorSuite extends FunSuite with ShouldMatchers {
     Calculator.eval(Plus(Literal(1.0), Literal(1.0)), Map()) should be (2.0)
   }
 
-  test("Calculator.eval(Plus(Literal(1.0), Literal(1.0)), Map(\"a\"->Signal(Plus(Literal(2.0),Literal(3.0))))) should return 5.0") {
-    Calculator.eval(Plus(Literal(1.0), Literal(1.0)), Map("a"->Signal(Plus(Literal(2.0),Literal(3.0))))) should be (7.0)
-  }
-
-  test("Calculator.eval(Plus(Literal(1.0), Literal(1.0)), Map(\"a\"->Signal(Plus(Plus(Literal(1.0), Literal(3.0)),Literal(3.0))))) should return 9.0") {
-    Calculator.eval(Plus(Literal(1.0), Literal(1.0)), Map("a"->Signal(Plus(Plus(Literal(1.0), Literal(3.0)),Literal(3.0))))) should be (9.0)
-  }
-
-  test("Calculator.eval(Minus(Literal(1.0), Literal(1.0)), Map(\"a\"->Signal(Plus(Plus(Literal(1.0), Literal(3.0)),Literal(3.0))))) should return 7.0") {
-    Calculator.eval(Minus(Literal(1.0), Literal(1.0)), Map("a"->Signal(Plus(Plus(Literal(1.0), Literal(3.0)),Literal(3.0))))) should be (7.0)
-  }
-
-  test("Calculator.eval(Plus(Literal(1.0), Ref(\"a\")), Map(\"a\"->Signal(Plus(Literal(2.0),Literal(3.0))))) should return 11.0") {
-    Calculator.eval(Plus(Literal(1.0), Ref("a")), Map("a"->Signal(Plus(Literal(2.0),Literal(3.0))))) should be (11.0)
+  test("Calculator.eval(Plus(Literal(1.0), Ref(\"a\")), Map(\"a\"->Signal(Plus(Literal(2.0),Literal(3.0))))) should return 6.0") {
+    Calculator.eval(Plus(Literal(1.0), Ref("a")), Map("a"->Signal(Plus(Literal(2.0),Literal(3.0))))) should be (6.0)
   }
 
 }

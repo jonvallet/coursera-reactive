@@ -20,7 +20,23 @@ object Calculator {
     case Minus(a: Expr, b: Expr) => eval(a, references) - eval(b, references)
     case Times(a: Expr, b: Expr) => eval(a, references) * eval(b, references)
     case Divide(a: Expr, b: Expr) => eval(a, references) / eval(b, references)
-    case Ref(name) => eval(getReferenceExpr(name, references), references)
+    case Ref(name) => {
+      val ref = getReferenceExpr(name, references)
+
+      def cyclic(expr: Expr, acc: Set[String] ): Boolean = expr match {
+        case Literal(_) => false
+        case Ref(name) => if (acc.contains(name)) true else cyclic(getReferenceExpr(name, references), acc +name)
+        case Plus(a,b) => cyclic(a, acc) || cyclic(b, acc)
+        case Minus(a,b) => cyclic(a, acc) || cyclic(b, acc)
+        case Divide(a,b) => cyclic(a, acc) || cyclic(b, acc)
+        case Times(a,b) => cyclic(a, acc) || cyclic(b, acc)
+      }
+
+      if (cyclic(ref, Set()))
+        Double.NaN
+      else
+        eval(getReferenceExpr(name, references), references)
+    }
   }
 
 

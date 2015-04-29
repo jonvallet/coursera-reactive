@@ -31,6 +31,14 @@ class NodeScalaSuite extends FunSuite {
     }
   }
 
+  test("A any future should return the first future to complete") {
+    val result = Future.any(List(Future { 1 }, Future { 2 }, Future { throw new Exception }))
+
+    result onComplete {
+      case x => println(x)
+    }
+  }
+
   test("CancellationTokenSource should allow stopping the computation") {
     val cts = CancellationTokenSource()
     val ct = cts.cancellationToken

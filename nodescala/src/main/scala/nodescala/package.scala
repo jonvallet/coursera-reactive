@@ -18,18 +18,17 @@ package object nodescala {
     /** Returns a future that is always completed with `value`.
      */
     def always[T](value: T): Future[T] = {
-      val p = Promise[T]()
-      p.complete(Try(value))
-      p.future
+      Future (value)
     }
     /** Returns a future that is never completed.
      *
      *  This future may be useful when testing if timeout logic works correctly.
      */
     def never[T]: Future[T] = {
+      Future {blocking {Thread.sleep(100000L)}}
       val p = Promise[T]()
-      blocking(Thread.sleep(2000L))
       p.future
+
     }
     /** Given a list of futures `fs`, returns the future holding the list of values of all the futures from `fs`.
      *  The returned future is completed only once all of the futures in `fs` have been completed.
@@ -51,13 +50,13 @@ package object nodescala {
      */
     def any[T](fs: List[Future[T]]): Future[T] = {
 
-      val values = for {
-        f: Future[T] <- fs
-        p: Promise[T] = Promise[T]()
-        p.
-      } yield p.future
+      val p = Promise[T]()
 
-      values.head
+      for {
+        f <- fs
+      }yield f onSuccess{ case x => p.trySuccess(x)}
+
+      p.future
     }
 
     /** Returns a future with a unit value that is completed after time `t`.

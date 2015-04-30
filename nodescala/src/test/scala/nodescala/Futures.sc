@@ -17,3 +17,7 @@ val n = Await.result(f2, 2 seconds)
 val f3 = Future(3)
 
 Await.result(f3, 0 seconds)
+
+val duration = 2 seconds
+
+duration.toMillis

@@ -1,5 +1,7 @@
 package nodescala
 
+import java.util.NoSuchElementException
+
 import scala.language.postfixOps
 import scala.util.{Try, Success, Failure}
 import scala.collection._
@@ -60,6 +62,21 @@ class NodeScalaSuite extends FunSuite {
 
     cts.unsubscribe()
     assert(Await.result(p.future, 1 second) == "done")
+  }
+
+  test("FutureOps(Future(1)).now() should return 1") {
+    val future = FutureOps(Future(1))
+    assert(future.now == 1)
+  }
+
+  test("FutureOps(Future.delay(1 second).now() should return NoSuchElementException") {
+    try {
+      val future = FutureOps(Future.delay(1 second))
+      future.now
+      fail()
+    } catch {
+      case t: NoSuchElementException => //ok
+    }
   }
 
   class DummyExchange(val request: Request) extends Exchange {

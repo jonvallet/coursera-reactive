@@ -79,6 +79,25 @@ class NodeScalaSuite extends FunSuite {
     }
   }
 
+  test("FutureOps(Future(1)).continueWith(a:Future[Int] => Future(2)) should return Future(2)") {
+    val f1: FutureOps[Int] = FutureOps(Future(1))
+    val f2 = {a:Future[Int] => 2}
+    val result = f1.continueWith(f2)
+
+    assert (Await.result(result, 1 second) == 2)
+  }
+
+  test("FutureOps(Future(1)).continue(a:Future[Int] => Future(2)) should return Future(2)") {
+    val f: FutureOps[Int] = FutureOps(Future(1))
+    def f1(a: Try[Int]): Int = a match  {
+      case Success(x) => x + 1
+    }
+
+    val result = f.continue(f1)
+
+    assert (Await.result(result, 1 second) == 2)
+  }
+
   class DummyExchange(val request: Request) extends Exchange {
     @volatile var response = ""
     val loaded = Promise[String]()

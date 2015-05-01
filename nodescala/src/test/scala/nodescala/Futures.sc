@@ -17,11 +17,7 @@ val n = Await.result(f2, 2 seconds)
 val f3 = Future(3)
 
 Await.result(f3, 0 seconds)
-
 val duration = 2 seconds
+def op(n: Int, f: Int => Int) = f(5)
 
-duration.toMillis
-
-def op(n: Int, f: (Int) => Int) = f(n)
-
-op(1, (_+2))
+op(1, {a =>a + 2})

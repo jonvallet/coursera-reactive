@@ -21,3 +21,7 @@ Await.result(f3, 0 seconds)
 val duration = 2 seconds
 
 duration.toMillis
+
+def op(n: Int, f: (Int) => Int) = f(n)
+
+op(1, (_+2))

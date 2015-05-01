@@ -163,7 +163,7 @@ class NodeScalaSuite extends FunSuite {
     }
 
     // wait until server is really installed
-    Thread.sleep(500)
+    Thread.sleep(1000)
 
     def test(req: Request) {
       val webpage = dummy.emit("/testDir", req)
@@ -177,6 +177,30 @@ class NodeScalaSuite extends FunSuite {
     test(immutable.Map("WorksForThree" -> List("Always works. Trust me.")))
 
     dummySubscription.unsubscribe()
+  }
+
+  test("Server should be stoppable if receives infinite  response") {
+    val dummy = new DummyServer(8191)
+    val dummySubscription = dummy.start("/testDir") {
+      request => Iterator.continually("a")
+    }
+
+    // wait until server is really installed
+    Thread.sleep(500)
+
+    val webpage = dummy.emit("/testDir", Map("Any" -> List("thing")))
+    try {
+      // let's wait some time
+      Await.result(webpage.loaded.future, 1 second)
+      fail("infinite response ended")
+    } catch {
+      case e: TimeoutException =>
+    }
+
+    // stop everything
+    dummySubscription.unsubscribe()
+    Thread.sleep(500)
+    webpage.loaded.future.now // should not get NoSuchElementException
   }
 
 }

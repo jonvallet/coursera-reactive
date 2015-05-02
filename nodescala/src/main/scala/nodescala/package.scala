@@ -25,7 +25,6 @@ package object nodescala {
      *  This future may be useful when testing if timeout logic works correctly.
      */
     def never[T]: Future[T] = {
-      Future {blocking {Thread.sleep(100000L)}}
       val p = Promise[T]()
       p.future
 
@@ -52,13 +51,7 @@ package object nodescala {
 
       val p = Promise[T]()
 
-      for {
-        f <- fs
-      } yield f onFailure  { case x => p.tryFailure(x) }
-
-      for {
-        f <- fs
-      } yield f onSuccess { case x => p.trySuccess(x) }
+      for (f <- fs) f onComplete { tryValue => p.tryComplete(tryValue)}
 
       p.future
     }

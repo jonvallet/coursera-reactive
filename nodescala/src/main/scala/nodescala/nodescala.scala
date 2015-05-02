@@ -48,28 +48,17 @@ trait NodeScala {
    *  @return               a subscription that can stop the server and all its asynchronous operations *entirely*
    */
   def start(relativePath: String)(handler: Request => Response): Subscription = {
-
     val listener = createListener(relativePath)
-    val listenerSubscription = listener.start()
-    val cts = CancellationTokenSource()
-    val ct = cts.cancellationToken
-
-    val runSubscription = Future.run(){ ct =>
-      async {
+    Subscription(
+      listener.start,
+      Future.run() { ct => async {
         while (ct.nonCancelled) {
-          Future(listener.nextRequest() onSuccess {
-            case (request, exchange) => respond(exchange, ct, handler(request))
-          })
-        }
-        Promise().success("Cancelled")
-      }
-    }
-
-    Subscription(listenerSubscription,runSubscription)
+          val (req, exch) = await { listener.nextRequest }
+          respond(exch, ct, handler(req))
+        }}}
+    )
   }
-
 }
-
 
 object NodeScala {
 

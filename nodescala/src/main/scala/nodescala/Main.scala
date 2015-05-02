@@ -27,11 +27,8 @@ object Main {
     // 3. create a future that completes after 20 seconds
     //    and continues with a `"Server timeout!"` message
     val timeOut: Future[String] = {
-      val p = Promise[String]()
-      Future.delay(20 seconds) onSuccess { case _ => p.success("Server timeout!")}
-      p.future
+      Future.delay(20 seconds) continueWith { f => "Server timeout!" }
     }
-
     // TO IMPLEMENT
     // 4. create a future that completes when either 20 seconds elapse
     //    or the user enters some text and presses ENTER

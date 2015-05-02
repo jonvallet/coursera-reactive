@@ -54,7 +54,11 @@ package object nodescala {
 
       for {
         f <- fs
-      }yield f onSuccess{ case x => p.trySuccess(x)}
+      } yield f onFailure  { case x => p.tryFailure(x) }
+
+      for {
+        f <- fs
+      } yield f onSuccess { case x => p.trySuccess(x) }
 
       p.future
     }

@@ -47,6 +47,26 @@ class NodeScalaSuite extends FunSuite {
 
   }
 
+  test("A any future should return  Failed if the first future fails") {
+
+    try {
+      val result = Future.any(List(Future {
+        blocking(Thread.sleep(2000l)); 1
+      }, Future {
+        throw new Exception("My Exception")
+      }))
+      Await.result(result, 3 seconds)
+    } catch {
+      case ex: Exception => {
+        if (ex.getMessage == "My Exception")
+          assert(true)//OK
+        else
+          fail()
+      }
+    }
+
+  }
+
   test("FutureOps(Future(1)).now() should return 1") {
     val future = FutureOps(Future(1))
     assert(future.now == 1)

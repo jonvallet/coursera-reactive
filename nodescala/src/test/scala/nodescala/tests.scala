@@ -47,23 +47,6 @@ class NodeScalaSuite extends FunSuite {
 
   }
 
-  test("CancellationTokenSource should allow stopping the computation") {
-    val cts = CancellationTokenSource()
-    val ct = cts.cancellationToken
-    val p = Promise[String]()
-
-    async {
-      while (ct.nonCancelled) {
-        // do work
-      }
-
-      p.success("done")
-    }
-
-    cts.unsubscribe()
-    assert(Await.result(p.future, 1 second) == "done")
-  }
-
   test("FutureOps(Future(1)).now() should return 1") {
     val future = FutureOps(Future(1))
     assert(future.now == 1)
@@ -96,6 +79,35 @@ class NodeScalaSuite extends FunSuite {
     val result = f.continue(f1)
 
     assert (Await.result(result, 1 second) == 2)
+  }
+
+  test("CancellationTokenSource should allow completion if not cancelled") {
+    val p = Promise[String]()
+
+    Future.run() { ct =>
+      async {
+        while (ct.nonCancelled) {
+          p.success("done")
+        }
+        p.success("cancelled")
+      }
+    }
+    assert(Await.result(p.future, 1 second) == "done")
+  }
+
+  test("CancellationTokenSource should allow stopping the computation") {
+    val p = Promise[String]()
+
+    val cts = Future.run() { ct =>
+      async {
+        while (ct.nonCancelled) {
+         Thread.sleep(10000L)
+        }
+        p.success("cancelled")
+      }
+    }
+    cts.unsubscribe()
+    assert(Await.result(p.future, 1 second) == "cancelled")
   }
 
   class DummyExchange(val request: Request) extends Exchange {

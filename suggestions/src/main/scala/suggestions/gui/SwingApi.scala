@@ -1,6 +1,9 @@
 package suggestions
 package gui
 
+import rx.Subscriber
+import rx.lang.scala.subjects.{ReplaySubject, AsyncSubject}
+
 import scala.language.reflectiveCalls
 import scala.collection.mutable.ListBuffer
 import scala.collection.JavaConverters._
@@ -9,7 +12,9 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.{ Try, Success, Failure }
 import scala.swing.Reactions.Reaction
 import scala.swing.event.Event
-import rx.lang.scala.Observable
+import rx.lang.scala.{Subscription, Subject, Observable}
+import scala.concurrent.duration._
+import scala.language.postfixOps
 
 /** Basic facilities for dealing with Swing-like components.
 *
@@ -51,7 +56,12 @@ trait SwingApi {
       * @param field the text field
       * @return an observable with a stream of text field updates
       */
-    def textValues: Observable[String] = ???
+    def textValues: Observable[String] = Observable.create[String](observer => {
+
+      val textReaction = Reaction { case ValueChanged(f) => observer.onNext(f.text) }
+      field.subscribe(textReaction)
+      Subscription()
+    })
 
   }
 

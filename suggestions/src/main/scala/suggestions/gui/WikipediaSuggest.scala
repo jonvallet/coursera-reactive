@@ -1,10 +1,12 @@
 package suggestions
 package gui
 
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.collection.JavaConverters._
 import scala.concurrent._
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.swing.Reactions._
 import scala.swing._
 import scala.util.{ Try, Success, Failure }
 import scala.swing.event._
@@ -71,6 +73,7 @@ object WikipediaSuggest extends SimpleSwingApplication with ConcreteSwingApi wit
 
     val eventScheduler = SchedulerEx.SwingEventThreadScheduler
 
+
     /**
      * Observables
      * You may find the following methods useful when manipulating GUI elements:
@@ -80,29 +83,52 @@ object WikipediaSuggest extends SimpleSwingApplication with ConcreteSwingApi wit
      *  `myEditorPane.text = "act"` : sets the content of `myEditorPane` to "act"
      */
 
-    // TO IMPLEMENT
-    val searchTerms: Observable[String] = ???
+    val swingApi = new ConcreteSwingApi {}
+
+    val wikiPediaApi = new ConcreteWikipediaApi {}
 
     // TO IMPLEMENT
-    val suggestions: Observable[Try[List[String]]] = ???
+    val searchTerms: Observable[String] =  searchTermField.textValues
+
+    // TO IMPLEMENT
+    val suggestions: Observable[Try[List[String]]] = searchTerms.concatRecovered(t => wikiSuggestResponseStream(t))
 
     // TO IMPLEMENT
     val suggestionSubscription: Subscription =  suggestions.observeOn(eventScheduler) subscribe {
-      x => ???
+      x => x match {
+        case Success(s) => suggestionList.listData = s
+        case Failure(e) => status.text = e.getMessage()
+      }
     }
 
     // TO IMPLEMENT
-    val selections: Observable[String] = ???
+    val selections: Observable[String] = {
+      Observable(observer => {
+        button.clicks.subscribe(
+          value => {
+            suggestionList.selection.items.toList match {
+              case x :: xs => observer.onNext(x)
+              case Nil => status.text = "Nothing selected! Please select a search term."
+            }
+          },
+          error => observer.onError(error),
+          () => observer.onCompleted)
+      })
+    }
 
     // TO IMPLEMENT
-    val pages: Observable[Try[String]] = ???
+    val pages: Observable[Try[String]] = selections.concatRecovered(t => wikiPageResponseStream(t))
 
     // TO IMPLEMENT
     val pageSubscription: Subscription = pages.observeOn(eventScheduler) subscribe {
-      x => ???
+      x => x match {
+        case Success(s) => editorpane.text = s
+        case Failure(e) => status.text = "Error: " + e.getMessage()
+      }
     }
 
   }
+
 
 }
 

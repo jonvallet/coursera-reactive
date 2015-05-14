@@ -56,8 +56,7 @@ trait SwingApi {
       * @param field the text field
       * @return an observable with a stream of text field updates
       */
-    def textValues: Observable[String] =  {
-      Observable(observer => {
+    def textValues: Observable[String] =  Observable.create( observer => {
         val textReaction = Reaction {
           case ValueChanged(f) => observer.onNext(f.text)
           case _ =>
@@ -68,7 +67,6 @@ trait SwingApi {
           observer.onCompleted()
         }
       })
-    }
   }
 
   implicit class ButtonOps(button: Button) {
@@ -79,8 +77,7 @@ trait SwingApi {
      * @param field the button
      * @return an observable with a stream of buttons that have been clicked
      */
-    def clicks: Observable[Button] = {
-      Observable(observer => {
+    def clicks: Observable[Button] = Observable.create ( observer => {
         val buttonReaction = Reaction {
           case ButtonClicked(b) => observer.onNext(b)
           case _ =>
@@ -91,6 +88,5 @@ trait SwingApi {
           observer.onCompleted()
         }
       })
-    }
   }
 }

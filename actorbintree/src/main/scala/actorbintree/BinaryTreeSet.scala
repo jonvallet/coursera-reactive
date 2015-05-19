@@ -68,8 +68,7 @@ class BinaryTreeSet extends Actor {
   // optional
   /** Accepts `Operation` and `GC` messages. */
   val normal: Receive = LoggingReceive {
-    case contains: Contains => root ! contains
-    case Insert(requester, id, elem) => requester ! OperationFinished(id)
+    case op: Operation => root ! op
     case _ => ??? }
 
   // optional
@@ -118,6 +117,14 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
         case Some(actorRef) => actorRef ! Contains(requester, id, e)
       }
     }
+    case Insert(requester, id, e) => if (e < elem) {
+      subtrees += Left -> context.actorOf(props(e, false), name = "node-" + e)
+      requester ! OperationFinished(id)
+    }
+      else{
+        subtrees += Right -> context.actorOf(props(e, false), name = "node-"+e)
+        requester ! OperationFinished(id)
+      }
     case _ => ???
     }
 

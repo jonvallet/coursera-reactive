@@ -4,6 +4,7 @@
 package actorbintree
 
 import akka.actor._
+import akka.event.LoggingReceive
 import scala.collection.immutable.Queue
 
 object BinaryTreeSet {
@@ -66,7 +67,9 @@ class BinaryTreeSet extends Actor {
 
   // optional
   /** Accepts `Operation` and `GC` messages. */
-  val normal: Receive = { case _ => ??? }
+  val normal: Receive = LoggingReceive {
+    case operation: Operation => pendingQueue.enqueue(operation)
+    case _ => ??? }
 
   // optional
   /** Handles messages while garbage collection is performed.

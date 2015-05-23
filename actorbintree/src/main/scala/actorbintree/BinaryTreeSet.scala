@@ -120,11 +120,20 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
     case Insert(requester, id, e) => if (e < elem) {
       subtrees += Left -> context.actorOf(props(e, false), name = "node-" + e)
       requester ! OperationFinished(id)
+    }else{
+      subtrees += Right -> context.actorOf(props(e, false), name = "node-"+e)
+      requester ! OperationFinished(id)
     }
-      else{
-        subtrees += Right -> context.actorOf(props(e, false), name = "node-"+e)
-        requester ! OperationFinished(id)
-      }
+    case Remove(requester, id, e) => if (e == elem) {
+      removed = true
+      requester ! OperationFinished(id)
+    }else if(e < elem) subtrees.get(Left) match {
+      case None => requester ! OperationFinished(id)
+      case Some(actorRef) => actorRef ! Remove(requester, id, e)
+    }else subtrees.get(Right) match {
+      case None => requester ! OperationFinished(id)
+      case Some(actorRef) => actorRef ! Remove(requester, id, e)
+    }
     case _ => ???
     }
 

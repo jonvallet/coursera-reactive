@@ -69,6 +69,7 @@ class BinaryTreeSet extends Actor {
   /** Accepts `Operation` and `GC` messages. */
   val normal: Receive = LoggingReceive {
     case op: Operation => root ! op
+    case GC => println("Garbage Collecting")
     case _ => ??? }
 
   // optional
@@ -107,7 +108,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
   /** Handles `Operation` messages and `CopyTo` requests. */
   val normal: Receive = LoggingReceive {
     case Contains(requester, id, e) => {
-      if (e == elem) requester ! ContainsResult(id, true)
+      if (e == elem) requester ! ContainsResult(id, !removed)
       else if (e < elem) subtrees.get(Left) match {
         case None => requester ! ContainsResult(id, false)
         case Some(actorRef) => actorRef ! Contains(requester, id, e)
@@ -117,12 +118,22 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
         case Some(actorRef) => actorRef ! Contains(requester, id, e)
       }
     }
-    case Insert(requester, id, e) => if (e < elem) {
-      subtrees += Left -> context.actorOf(props(e, false), name = "node-" + e)
+    case Insert(requester, id, e) => if (e == elem) {
+      removed = true
       requester ! OperationFinished(id)
-    }else{
-      subtrees += Right -> context.actorOf(props(e, false), name = "node-"+e)
-      requester ! OperationFinished(id)
+    }
+    else if (e < elem) subtrees.get(Left) match {
+      case None => {
+        subtrees += Left -> context.actorOf(props(e, false), name = "node-" + e)
+        requester ! OperationFinished(id)
+      }
+      case Some(actorRef) => actorRef ! Insert(requester, id, e)
+    }else subtrees.get(Right) match {
+      case None => {
+        subtrees += Right -> context.actorOf(props(e, false), name = "node-"+e)
+        requester ! OperationFinished(id)
+      }
+      case Some(actorRef) => actorRef ! Insert(requester, id, e)
     }
     case Remove(requester, id, e) => if (e == elem) {
       removed = true

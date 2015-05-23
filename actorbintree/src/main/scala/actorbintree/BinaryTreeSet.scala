@@ -69,7 +69,7 @@ class BinaryTreeSet extends Actor {
   /** Accepts `Operation` and `GC` messages. */
   val normal: Receive = LoggingReceive {
     case op: Operation => root ! op
-    case GC => println("Garbage Collecting")
+    case GC => println("Garbage Collecting!")
     case _ => ??? }
 
   // optional
@@ -119,7 +119,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
       }
     }
     case Insert(requester, id, e) => if (e == elem) {
-      removed = true
+      removed = false
       requester ! OperationFinished(id)
     }
     else if (e < elem) subtrees.get(Left) match {

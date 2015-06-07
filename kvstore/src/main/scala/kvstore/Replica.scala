@@ -46,7 +46,7 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
   var replicators = Set.empty[ActorRef]
 
   val persistence = context.system.actorOf(persistenceProps)
-  var cancellables = Map.empty[Long, Cancellable]
+  var cancellables = Map.empty[Long, (ActorRef, Cancellable)]
 
   def receive = {
     case JoinedPrimary   => context.become(leader)
@@ -82,7 +82,7 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
           50 milliseconds,
           persistence,
           Persist(key, Some(value), seq))
-      cancellables += seq -> cancellable
+      cancellables += seq -> (sender, cancellable)
       persistence ! Persist(key, Some(value), seq)
       context.become(persisting)
     }
@@ -98,8 +98,10 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
     case Persisted(key, id) => {
       println ("Persisted: Sending ack to: "+sender +" and arbiter: "+arbiter)
       val cancellable = cancellables.get(id)
-      cancellable match {case Some(value) => value.cancel()}
-      arbiter ! SnapshotAck(key, id)
+      cancellable match {case Some(value) => {
+        value._2.cancel()
+        value._1 ! SnapshotAck(key, id)
+      }}
       version += 1
       context.become(replica)
     }

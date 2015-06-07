@@ -1,16 +1,13 @@
 package kvstore
 
-import akka.actor.{ OneForOneStrategy, Props, ActorRef, Actor }
+import akka.actor._
+import akka.event.LoggingReceive
 import kvstore.Arbiter._
 import scala.collection.immutable.Queue
 import akka.actor.SupervisorStrategy.Restart
 import scala.annotation.tailrec
 import akka.pattern.{ ask, pipe }
-import akka.actor.Terminated
 import scala.concurrent.duration._
-import akka.actor.PoisonPill
-import akka.actor.OneForOneStrategy
-import akka.actor.SupervisorStrategy
 import akka.util.Timeout
 
 object Replica {
@@ -48,6 +45,8 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
   // the current set of replicators
   var replicators = Set.empty[ActorRef]
 
+  val persistence = context.system.actorOf(persistenceProps)
+  var cancellables = Map.empty[Long, Cancellable]
 
   def receive = {
     case JoinedPrimary   => context.become(leader)
@@ -55,7 +54,7 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
   }
 
   /* TODO Behavior for  the leader role. */
-  val leader: Receive = {
+  val leader: Receive = LoggingReceive{
     case Get(key, id) => sender ! GetResult(key, kv.get(key), id)
     case Insert(key, value, id) => {
       kv += key -> value
@@ -70,7 +69,7 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
   var version = 0L
 
   /* TODO Behavior for the replica role. */
-  val replica: Receive = {
+  val replica: Receive = LoggingReceive{
     case Get(key, id) => sender ! GetResult(key, kv.get(key), id)
     case Snapshot(key,_,seq) if (seq != version) => {
       println ("Version: "+ version +" seq: "+seq)
@@ -79,14 +78,30 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
     case Snapshot(key, Some(value), seq) => {
       println("Inserting value:" + value+" with seq:"+ seq)
       kv += (key -> value)
-      version += 1
-      sender ! SnapshotAck(key, seq)
+      val cancellable = context.system.scheduler.schedule(0 milliseconds,
+          50 milliseconds,
+          persistence,
+          Persist(key, Some(value), seq))
+      cancellables += seq -> cancellable
+      persistence ! Persist(key, Some(value), seq)
+      context.become(persisting)
     }
     case Snapshot(key, None, seq) => {
       println("Removing key: "+ key +" with seq: "+seq)
       kv -= key
       version += 1
       sender ! SnapshotAck(key, seq)
+    }
+  }
+
+  val persisting: Receive = LoggingReceive {
+    case Persisted(key, id) => {
+      println ("Persisted: Sending ack to: "+sender +" and arbiter: "+arbiter)
+      val cancellable = cancellables.get(id)
+      cancellable match {case Some(value) => value.cancel()}
+      arbiter ! SnapshotAck(key, id)
+      version += 1
+      context.become(replica)
     }
   }
 

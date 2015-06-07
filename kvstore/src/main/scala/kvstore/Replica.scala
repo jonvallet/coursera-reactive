@@ -1,20 +1,19 @@
 package kvstore
 
-import akka.actor._
-import akka.event.LoggingReceive
-import kvstore.Arbiter._
-import scala.collection.immutable.Queue
-import akka.actor.SupervisorStrategy.Restart
-import scala.annotation.tailrec
-import akka.pattern.{ ask, pipe }
+import akka.actor.{Actor, ActorRef, OneForOneStrategy, Props, Terminated}
+import scala.collection.mutable
 import scala.concurrent.duration._
-import akka.util.Timeout
+import scala.language.postfixOps
+
+import kvstore.Arbiter._
 
 object Replica {
+
   sealed trait Operation {
     def key: String
     def id: Long
   }
+
   case class Insert(key: String, value: String, id: Long) extends Operation
   case class Remove(key: String, id: Long) extends Operation
   case class Get(key: String, id: Long) extends Operation
@@ -28,85 +27,231 @@ object Replica {
 }
 
 class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
+
+  import akka.actor.SupervisorStrategy._
+  import Persistence._
   import Replica._
   import Replicator._
-  import Persistence._
+
   import context.dispatcher
 
-  /*
-   * The contents of this actor is just a suggestion, you can implement it in any way you like.
-   */
+  override val supervisorStrategy =
+    OneForOneStrategy(maxNrOfRetries = 2, withinTimeRange = 1 second) {
+      case _: Exception => Stop
+    }
 
-  arbiter ! Join
+  private case class TimedOut(id: Long)
 
-  var kv = Map.empty[String, String]
+  private case object SendPendingPersists
+
+  private def createPersistence = {
+    val res = context.actorOf(persistenceProps)
+    context.watch(res)
+    res
+  }
+
+  // KV store
+  private var kv = Map.empty[String, String]
+  // logical clock
+  private var lClock = 0L
+  // persistence storage
+  private var persistence = createPersistence
   // a map from secondary replicas to replicators
-  var secondaries = Map.empty[ActorRef, ActorRef]
-  // the current set of replicators
-  var replicators = Set.empty[ActorRef]
+  private val secondaries = mutable.HashMap.empty[ActorRef, ActorRef]
 
-  val persistence = context.system.actorOf(persistenceProps)
-  var cancellables = Map.empty[Long, (ActorRef, Cancellable)]
+
+  private case class Acknowledgement(target: ActorRef, success: Option[Any], failure: Option[Any])
+
+  private case class PendingPersist(msg: Any)
+
+  private case class PendingReplicate(msg: Any, waitingOn: Set[ActorRef]) {
+    def isEmpty = waitingOn.isEmpty
+
+    def completeOn(a: ActorRef) = PendingReplicate(msg, waitingOn - a)
+  }
+
+  // acknowledgements
+  private val acks = mutable.HashMap.empty[Long, Acknowledgement]
+  // not-yet-confirmed persistence msgs
+  private val pendingPersists = mutable.HashMap.empty[Long, PendingPersist]
+  // not-yet-confirmed replications
+  private val pendingReplicates = mutable.HashMap.empty[Long, PendingReplicate]
+
 
   def receive = {
-    case JoinedPrimary   => context.become(leader)
+    case JoinedPrimary => context.become(leader)
     case JoinedSecondary => context.become(replica)
   }
 
-  /* TODO Behavior for  the leader role. */
-  val leader: Receive = LoggingReceive{
-    case Get(key, id) => sender ! GetResult(key, kv.get(key), id)
-    case Insert(key, value, id) => {
-      kv += key -> value
-      sender ! OperationAck(id)
-    }
-    case Remove(key, id) => {
-      kv -= key
-      sender ! OperationAck(id)
+
+  private def addAcknowledgement(id: Long, a: Acknowledgement) = acks.put(id, a)
+
+  private def addPendingPersist(id: Long, persistMsg: Any) = {
+    pendingPersists.put(id, PendingPersist(persistMsg))
+    persistence ! persistMsg
+  }
+
+  private def addPendingReplicate(id: Long, replicateMsg: Any) = {
+    val replicators = secondaries.values.toSet
+    if (!replicators.isEmpty) {
+      pendingReplicates.put(id, PendingReplicate(replicateMsg, replicators))
+      replicators.foreach {
+        _ ! replicateMsg
+      }
     }
   }
 
-  var version = 0L
+  private def removePendingPersist(id: Long) = pendingPersists.remove(id)
 
-  /* TODO Behavior for the replica role. */
-  val replica: Receive = LoggingReceive{
-    case Get(key, id) => sender ! GetResult(key, kv.get(key), id)
-    case Snapshot(key,_,seq) if (seq != version) => {
-      println ("Version: "+ version +" seq: "+seq)
-      if (seq < version) sender ! SnapshotAck(key, seq)
+  private def removePendingReplicate(id: Long, from: ActorRef) = {
+    pendingReplicates.get(id)
+      .map {
+      _.completeOn(from)
     }
-    case Snapshot(key, Some(value), seq) => {
-      println("Inserting value:" + value+" with seq:"+ seq)
-      kv += (key -> value)
-      val cancellable = context.system.scheduler.schedule(0 milliseconds,
-          50 milliseconds,
-          persistence,
-          Persist(key, Some(value), seq))
-      cancellables += seq -> (sender, cancellable)
-      persistence ! Persist(key, Some(value), seq)
-      context.become(persisting)
-    }
-    case Snapshot(key, None, seq) => {
-      println("Removing key: "+ key +" with seq: "+seq)
-      kv -= key
-      version += 1
-      sender ! SnapshotAck(key, seq)
+      .foreach { pr => if (pr.isEmpty) pendingReplicates.remove(id) else pendingReplicates.put(id, pr) }
+  }
+
+  private def tryComplete(id: Long) = {
+    (pendingPersists.get(id), pendingReplicates.get(id)) match {
+      case (None, None) => acks.remove(id).map { a => a.success.map {
+        a.target ! _
+      }
+      }
+      case _ => {}
     }
   }
 
-  val persisting: Receive = LoggingReceive {
-    case Get(key, id) => sender ! GetResult(key, kv.get(key), id)
-    case Persisted(key, id) => {
-      println ("Persisted: Sending ack to: "+sender +" and arbiter: "+arbiter)
-      val cancellable = cancellables.get(id)
-      cancellable match {case Some(value) => {
-        value._2.cancel()
-        value._1 ! SnapshotAck(key, id)
-      }}
-      version += 1
-      context.become(replica)
+  private def complete(id: Long) = {
+    acks.remove(id).map { a => a.success.map {
+      a.target ! _
+    }
+    }
+    pendingPersists.remove(id)
+    pendingReplicates.remove(id)
+  }
+
+  private def fail(id: Long) = {
+    acks.remove(id).map { a => a.failure.map {
+      a.target ! _
+    }
+    }
+    pendingPersists.remove(id)
+    pendingReplicates.remove(id)
+  }
+
+  private def exienableTimeout(id: Long) = {
+    context.system.scheduler.scheduleOnce(1 second, self, TimedOut(id))
+  }
+
+
+  private def addSecondary(replica: ActorRef) = {
+    val replicator = context.actorOf(Replicator.props(replica))
+    secondaries.put(replica, replicator)
+    kv.zipWithIndex.foreach {
+      case ((k, v), i) => replicator ! Replicate(k, Some(v), i)
     }
   }
 
+  private def removeSecondary(replica: ActorRef, replicator: ActorRef) = {
+    secondaries.remove(replica)
+    context.stop(replicator)
+    pendingReplicates
+      .filter { case (_, pr) => pr.waitingOn.contains(replicator) }
+      .foreach { case (id, _) => removePendingReplicate(id, replicator); tryComplete(id) }
+  }
+
+
+  val processGet: Receive = {
+    case Get(k, id) => {
+      sender ! GetResult(k, kv.get(k), id)
+    }
+  }
+
+  val processUpdates: Receive = {
+    case Insert(k, v, id) => {
+      kv = kv + ((k, v))
+      addAcknowledgement(id, Acknowledgement(sender, Some(OperationAck(id)), Some(OperationFailed(id))))
+      addPendingPersist(id, Persist(k, Some(v), id))
+      addPendingReplicate(id, Replicate(k, Some(v), id))
+      enableTimeout(id)
+    }
+    case Remove(k, id) => {
+      kv = kv - k
+      addAcknowledgement(id, Acknowledgement(sender, Some(OperationAck(id)), Some(OperationFailed(id))))
+      addPendingPersist(id, Persist(k, None, id))
+      addPendingReplicate(id, Replicate(k, None, id))
+      enableTimeout(id)
+    }
+  }
+
+  val processSnapshots: Receive = {
+    case Snapshot(k, vOpt, seq) if seq > lClock => {
+      // ignore
+    }
+    case Snapshot(k, vOpt, seq) if seq < lClock => {
+      sender ! SnapshotAck(k, seq)
+    }
+    case Snapshot(k, vOpt, seq) /* if seq == lClock */ => {
+      vOpt match {
+        case Some(v) => kv = kv + ((k, v))
+        case None => kv = kv - k
+      }
+      addAcknowledgement(seq, Acknowledgement(sender, Some(SnapshotAck(k, seq)), None))
+      addPendingPersist(seq, Persist(k, vOpt, seq))
+      enableTimeout(seq)
+      lClock += 1
+    }
+  }
+
+  val processTimeout: Receive = {
+    case TimedOut(id) => {
+      fail(id)
+    }
+  }
+
+  val processPersistence: Receive = {
+    case Persisted(k, id) => {
+      removePendingPersist(id)
+      tryComplete(id)
+    }
+    case SendPendingPersists => {
+      pendingPersists.values.foreach { pr => persistence ! pr.msg }
+    }
+    case Terminated(child) if persistence == child => {
+      persistence = createPersistence
+      self ! SendPendingPersists
+    }
+  }
+
+  val processReplication: Receive = {
+    case Replicas(replicas) => {
+      secondaries
+        .filterNot { case (r, _) => replicas.contains(r) }
+        .foreach { case (r, rr) => removeSecondary(r, rr) }
+
+      replicas
+        .filterNot {
+        _ == self
+      }
+        .filterNot {
+        secondaries.contains(_)
+      }
+        .foreach {
+        addSecondary(_)
+      }
+    }
+    case Replicated(k, id) => {
+      removePendingReplicate(id, sender)
+      tryComplete(id)
+    }
+  }
+
+
+  val leader: Receive = processGet orElse processUpdates orElse processTimeout orElse processPersistence orElse processReplication
+  val replica: Receive = processGet orElse processSnapshots orElse processTimeout orElse processPersistence
+
+  // We're ready!
+  arbiter ! Join
+  // We retry persistence every 100 ms
+  context.system.scheduler.schedule(0 millis, 100 millis, self, SendPendingPersists)
 }
-

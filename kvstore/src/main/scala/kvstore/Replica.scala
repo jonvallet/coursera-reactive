@@ -95,6 +95,7 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
   }
 
   val persisting: Receive = LoggingReceive {
+    case Get(key, id) => sender ! GetResult(key, kv.get(key), id)
     case Persisted(key, id) => {
       println ("Persisted: Sending ack to: "+sender +" and arbiter: "+arbiter)
       val cancellable = cancellables.get(id)
